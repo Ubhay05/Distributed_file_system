@@ -1,0 +1,57 @@
+  std::cin >> arg1 >> arg2;
+
+            // Split file into chunks
+            std::cout << "Splitting " << arg1 << " into " 
+                      << num_nodes << " chunks...\n";
+            auto chunks = split_file(arg1, num_nodes);
+
+            if (chunks.empty()) {
+                std::cerr << "Error splitting file\n";
+                continue;
+            }
+
+            // Send each chunk to a different node
+            for (int i = 0; i < (int)chunks.size(); i++) {
+                put_chunk(chunks[i], arg2, 
+                         nodes[i].first, nodes[i].second);
+            }
+            std::cout << "PUT complete: " << arg2 
+                      << " stored in " << chunks.size() << " chunks\n";
+
+        } else if (command == "GET") {
+            std::cin >> arg1 >> arg2;
+
+            // Collect all chunks from their respective nodes
+            std::cout << "Collecting chunks for " << arg1 << "...\n";
+            std::vector<FileChunk> chunks;
+
+            for (int i = 0; i < num_nodes; i++) {
+                FileChunk chunk = get_chunk(arg1, i, 
+                                           nodes[i].first, nodes[i].second);
+                if (!chunk.data.empty()) {
+                    chunks.push_back(chunk);
+                }
+            }
+
+            if (chunks.empty()) {
+                std::cerr << "Error: could not retrieve any chunks\n";
+                continue;
+            }
+
+            // Reassemble
+            reassemble_file(arg2, chunks);
+            std::cout << "GET complete: " << arg2 << "\n";
+
+        } else if (command == "LIST") {
+            std::cout << "Files across all nodes:\n";
+            for (auto& node : nodes) {
+                list_files(node.first, node.second);
+            }
+
+        } else {
+            std::cout << "Unknown command\n";
+        }
+    }
+
+    return 0;
+}

@@ -1,0 +1,66 @@
+;
+    recv(sock, response, sizeof(response), 0);
+    if (std::string(response) == "ERROR") {
+        std::cerr << "  Error: chunk" << chunk_index << " not found on node " << port << "\n";
+        close(sock);
+        return chunk;
+    }
+
+    // Read chunk size
+    long chunk_size = 0;
+    memcpy(&chunk_size, response, sizeof(long));
+
+    // Receive chunk data
+    chunk.data.resize(chunk_size);
+    long received = 0;
+    while (received < chunk_size) {
+        int bytes = recv(sock, chunk.data.data() + received, 
+                        chunk_size - received, 0);
+        received += bytes;
+    }
+
+    std::cout << "  chunk" << chunk_index << " <- node " << port << " ✓\n";
+    close(sock);
+    return chunk;
+}
+
+// List files on a storage node
+void list_files(const std::string& host, int port) {
+    int sock = connect_to_server(host, port);
+    if (sock < 0) return;
+
+    std::string cmd = "LIST";
+    send(sock, cmd.c_str(), cmd.size() + 1, 0);
+
+    char buffer[BUFFER_SIZE] = {0};
+    recv(sock, buffer, BUFFER_SIZE, 0);
+    std::cout << "Node " << port << ":\n" << buffer << "\n";
+
+    close(sock);
+}
+
+int main() {
+    // All 3 storage nodes
+    std::vector<std::pair<std::string, int>> nodes = {
+        {"127.0.0.1", STORAGE_NODE_1_PORT},
+        {"127.0.0.1", STORAGE_NODE_2_PORT},
+        {"127.0.0.1", STORAGE_NODE_3_PORT}
+    };
+
+    int num_nodes = nodes.size();
+    std::string command, arg1, arg2;
+
+    std::cout << "=== DFS Client (with chunking) ===\n";
+    std::cout << "Commands: PUT <local_file> <remote_name>\n";
+    std::cout << "          GET <remote_name> <local_file>\n";
+    std::cout << "          LIST\n";
+    std::cout << "          exit\n\n";
+
+    while (true) {
+        std::cout << ">>> ";
+        std::cin >> command;
+
+        if (command == "exit") break;
+
+        else if (command == "PUT") {
+          

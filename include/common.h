@@ -17,3 +17,12 @@ const int BACKLOG = 10;
 const std::string STORAGE_DIR_1 = "storage/node1/";
 const std::string STORAGE_DIR_2 = "storage/node2/";
 const std::string STORAGE_DIR_3 = "storage/node3/";
+
+// Master node port
+const int MASTER_PORT = 9000;
+
+// Heartbeat interval (seconds) - how often nodes ping master
+const int HEARTBEAT_INTERVAL = 5;
+
+// Timeout - if master doesn't hear from a node in this long, remove it
+const int NODE_TIMEOUT = 15;

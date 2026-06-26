@@ -7,6 +7,7 @@
 #include "../include/common.h"
 #include "../include/socket_utils.h"
 #include "../include/file_utils.h"
+#include <sstream>
 
 // Send one chunk to a storage node
 void put_chunk(const FileChunk& chunk, const std::string& remote_name,
@@ -101,18 +102,42 @@ void list_files(const std::string& host, int port) {
     close(sock);
 }
 
-int main() {
-    // All 3 storage nodes
-    std::vector<std::pair<std::string, int>> nodes = {
-        {"127.0.0.1", STORAGE_NODE_1_PORT},
-        {"127.0.0.1", STORAGE_NODE_2_PORT},
-        {"127.0.0.1", STORAGE_NODE_3_PORT}
-    };
+std::vector<std::pair<std::string, int>> get_nodes_from_master() {
+    std::vector<std::pair<std::string, int>> nodes;
 
-    int num_nodes = nodes.size();
+    int sock = connect_to_server("127.0.0.1", MASTER_PORT);
+    if (sock < 0) {
+        std::cerr << "Error: could not reach master node\n";
+        return nodes;
+    }
+
+    std::string cmd = "GET_NODES";
+    send(sock, cmd.c_str(), cmd.size() + 1, 0);
+
+    char buffer[BUFFER_SIZE] = {0};
+    recv(sock, buffer, BUFFER_SIZE, 0);
+    std::string response(buffer);
+    close(sock);
+
+    if (response == "EMPTY") return nodes;
+
+    std::istringstream iss(response);
+    std::string line;
+    while (std::getline(iss, line)) {
+        if (line.empty()) continue;
+        size_t colon = line.find(':');
+        std::string host = line.substr(0, colon);
+        int port = std::stoi(line.substr(colon + 1));
+        nodes.push_back({host, port});
+    }
+
+    return nodes;
+}
+
+int main() {
     std::string command, arg1, arg2;
 
-    std::cout << "=== DFS Client (with chunking) ===\n";
+    std::cout << "=== DFS Client (with master coordination) ===\n";
     std::cout << "Commands: PUT <local_file> <remote_name>\n";
     std::cout << "          GET <remote_name> <local_file>\n";
     std::cout << "          LIST\n";
@@ -127,20 +152,23 @@ int main() {
         else if (command == "PUT") {
             std::cin >> arg1 >> arg2;
 
-            // Split file into chunks
-            std::cout << "Splitting " << arg1 << " into " 
-                      << num_nodes << " chunks...\n";
-            auto chunks = split_file(arg1, num_nodes);
+            // Refresh node list right before this operation
+            auto nodes = get_nodes_from_master();
+            if (nodes.empty()) {
+                std::cerr << "Error: no storage nodes available right now\n";
+                continue;
+            }
+            std::cout << "Using " << nodes.size() << " active nodes\n";
 
+            int num_nodes = nodes.size();
+            auto chunks = split_file(arg1, num_nodes);
             if (chunks.empty()) {
                 std::cerr << "Error splitting file\n";
                 continue;
             }
 
-            // Send each chunk to a different node
             for (int i = 0; i < (int)chunks.size(); i++) {
-                put_chunk(chunks[i], arg2, 
-                         nodes[i].first, nodes[i].second);
+                put_chunk(chunks[i], arg2, nodes[i].first, nodes[i].second);
             }
             std::cout << "PUT complete: " << arg2 
                       << " stored in " << chunks.size() << " chunks\n";
@@ -148,13 +176,19 @@ int main() {
         } else if (command == "GET") {
             std::cin >> arg1 >> arg2;
 
-            // Collect all chunks from their respective nodes
-            std::cout << "Collecting chunks for " << arg1 << "...\n";
+            // Refresh node list right before this operation
+            auto nodes = get_nodes_from_master();
+            if (nodes.empty()) {
+                std::cerr << "Error: no storage nodes available right now\n";
+                continue;
+            }
+            std::cout << "Using " << nodes.size() << " active nodes\n";
+
+            int num_nodes = nodes.size();
             std::vector<FileChunk> chunks;
 
             for (int i = 0; i < num_nodes; i++) {
-                FileChunk chunk = get_chunk(arg1, i, 
-                                           nodes[i].first, nodes[i].second);
+                FileChunk chunk = get_chunk(arg1, i, nodes[i].first, nodes[i].second);
                 if (!chunk.data.empty()) {
                     chunks.push_back(chunk);
                 }
@@ -165,11 +199,16 @@ int main() {
                 continue;
             }
 
-            // Reassemble
             reassemble_file(arg2, chunks);
             std::cout << "GET complete: " << arg2 << "\n";
 
         } else if (command == "LIST") {
+            auto nodes = get_nodes_from_master();
+            if (nodes.empty()) {
+                std::cerr << "Error: no storage nodes available right now\n";
+                continue;
+            }
+
             std::cout << "Files across all nodes:\n";
             for (auto& node : nodes) {
                 list_files(node.first, node.second);

@@ -1,0 +1,6 @@
+bin/
+storage/
+*.dSYM/
+test*.txt
+restored*.txt
+*.o
